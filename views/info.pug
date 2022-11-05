@@ -39,10 +39,10 @@ block content
             if settings.api_page.public_apis.rpc.tnft_get.enabled == true && settings.api_cmds['tnft_get'] != null && settings.api_cmds['tnft_get'] != ''
               li
                 p
-                  div.fw-bold tnft_get
+                  div.fw-bold tnft_get [namespace_id] [key]
                   div
                     em #{settings.locale.api_tnft_get}
-                  a(href='/api/tnft_get') #{address}/api/tnft_get
+                  a(href='/api/tnft_get?namespace_id=' + settings.api_page.sample_data.namespace_id + '&key=' + settings.api_page.sample_data.key) #{address}/api/tnft_get?namespace_id=#{settings.api_page.sample_data.namespace_id}&key=#{settings.api_page.sample_data.key}
             if settings.api_page.public_apis.rpc.getdifficulty.enabled == true && settings.api_cmds['getdifficulty'] != null && settings.api_cmds['getdifficulty'] != ''
               li
                 p
