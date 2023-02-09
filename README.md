@@ -929,3 +929,233 @@ Redistribution and use in source and binary forms, with or without modification,
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+THE ULTIMATE GUIDE ...
+Iquidus Explorer Setup in 30 Minutes
+2020-06-22
+5 Mins read
+1886
+1
+Share
+The ultimate installation guide for the Iquidus Block Explorer. There are no up-to-date and complete guides on the internet. Here the all in one guide from 2020 incl. https certificate creation with Let’s Encrypt, MongoDB 4, PM2 process manager and troubleshooting section.
+
+Pre-requisites
+VPS server with at least 2x CPU cores and 2 GB Ram
+Ubuntu 18.04 LTS or 20.04 LTS
+Create an A DNS record at your hosting provider for your explorer URL. (i.e. explorer.yourdomain.com)
+Preparing the server
+Install the latests updates
+
+sudo apt update && sudo apt -y upgrade
+When all updates are installed, reboot the server
+
+sudo reboot
+Install needed depencies and remove all unused packages
+
+sudo apt -y install git libkrb5-dev nginx nano gnupg && sudo apt -y autoremove --purge
+When it’s done, reboot the server
+
+sudo reboot
+Install the coin daemon
+Install the daemon reboot safe and add the parameters in the config file. Use no special characters for the username and password! Only the local host have rpc access, so the username and password mustn’t be very difficult and long. Start and sync the blockchain.
+
+rpcuser=username
+rpcpassword=password
+rpcallowip=127.0.0.1
+rpcport=coin rpc port
+server=1
+txindex=1
+Install the Mongo Database Server
+We are using the MongoDB version 4.2
+
+wget -qO - https://www.mongodb.org/static/pgp/server-4.2.asc | sudo apt-key add -
+echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu bionic/mongodb-org/4.2 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-4.2.list && sudo apt update
+sudo apt install -y mongodb-org
+echo "mongodb-org hold" | sudo dpkg --set-selections
+echo "mongodb-org-server hold" | sudo dpkg --set-selections
+echo "mongodb-org-shell hold" | sudo dpkg --set-selections
+echo "mongodb-org-mongos hold" | sudo dpkg --set-selections
+echo "mongodb-org-tools hold" | sudo dpkg --set-selections
+Configure and run the MongoDB
+sudo systemctl daemon-reload && sudo systemctl start mongod && sudo systemctl enable mongod && sudo systemctl status mongod
+Create the explorer database
+mongo
+use explorerdb
+db.createUser( { user: "Your-DB-User", pwd: "Your-DB-Password", roles: [ "readWrite" ] } )
+exit
+Install node.js and npm
+sudo apt update && sudo apt -y install build-essential nodejs npm
+Install the Iquidis Explorer
+git clone https://github.com/iquidus/explorer.git
+cd explorer && npm install --production
+cp ./settings.json.template ./settings.json
+Check that you have the directory “tmp” in the explorer directory. When not, create it.
+
+mkdir tmp
+Configure the Explorer
+vi settings.json
+The settings file is very well commented, so it’s useless to explain all here. I will explain only the most important things.
+
+“address”: “127.0.0.1:3001”, –> “address”: “explorer.yourdomain.com”,
+
+Don’t play around with the theme and logo setting right now.
+
+// ensure links on API page are valid –> You will change it later when all is done and the explorer is up and running.
+
+“block_parallel_tasks”: 1, –> Set this value to “35”. It’s speeds up the sync.
+
+//genesis
+“genesis_tx”: “65f705d2f385dc85763a317b3ec000063003d6b039546af5d8195a5ec27ae410”,
+“genesis_block”: “b2926a56ca64e0cd2430347e383f63ad7092f406088b9b86d6d68c2a34baef51”,
+
+You will find the genesis hashes in your wallet codebase, chainparams.cpp.
+
+hashGenesisBlock = genesis_block
+genesis.hashMerkleRoot = genesis_tx
+
+Get it running
+Start the application
+
+npm start
+The databases are created now. We will create indexes to speed up the db.
+Stop the application with “Ctrl + C”
+
+mongo
+use explorerdb
+db.txes.createIndex({total: 1})
+db.txes.createIndex({total: -1})
+db.txes.createIndex({blockindex: 1})
+db.txes.createIndex({blockindex: -1})
+db.addresstxes.createIndex({a_id: 1, blockindex: -1})
+exit
+Start the application.
+
+npm start
+Open a second terminal session (don’t touch the first session). Now we will sync the explorer. Note: It depends on your blockchain size, this process can run hours or days!
+
+cd explorer && node scripts/sync.js index update reindex
+Open web browser and check the frontend. http://explorer.yourdomain.com:3001
+
+Wait now till the sync is done, don’t close any window. When the sync terminates, you will receive an exception and you have to Google what is the problem and how to fix it. For this we have no cookbook. With a correct working standard blockchain you will receive no problems.
+
+When the chain is synced, you can sync the other components, it depends on your configuration.
+
+node scripts/sync.js market
+node scripts/peers.js
+Finalization
+We will make the application reboot safe and install as service. For this we’re using the “Process Manager 2” (PM2) tool.
+
+Stop the application in your 1st terminal with “Ctrl + C”.
+
+sudo npm install -g pm2
+sudo pm2 start bin/cluster
+sudo env PATH=$PATH:/usr/local/bin pm2 startup
+sudo pm2 save && sudo systemctl daemon-reload && systemctl start pm2--> fill it with your service name (use tab)
+Check that the serice is up and running.
+
+sudo systemctl status pm2--> fill it with your service name (use tab)
+Important commands to stop, start, restart, monitor the explorer application
+pm2 stop
+pm2 start
+pm2 restart
+pm2 monit
+We will automate the scripts via cron
+
+sudo crontab -e
+*/5 * * * * cd /root/explorer && /usr/bin/nodejs scripts/sync.js index update > /dev/null 2>&1
+*/7 * * * * cd /root/explorer && /usr/bin/nodejs scripts/sync.js market > /dev/null 2>&1
+*/8 * * * * cd /root/explorer && /usr/bin/nodejs scripts/peers.js > /dev/null 2>&1
+Nginx reverse proxy for security to run the app under port 80/443
+We will remove the default nginx configuration and create a new one.
+
+sudo rm /etc/nginx/sites-enabled/default
+sudo vi /etc/nginx/sites-available/explorer
+Paste the config into the new file and change the server name with your URL.
+
+server {
+    listen 80;
+    server_name explorer.yourdomain.com;
+
+    location / {
+        proxy_set_header   X-Forwarded-For $remote_addr;
+        proxy_set_header   Host $http_host;
+        proxy_pass         "http://127.0.0.1:3001";
+    }
+}
+We will link our new nginx config.
+
+sudo ln -s /etc/nginx/sites-available/explorer /etc/nginx/sites-enabled/explorer
+And start the nginx reverse proxy.
+
+sudo systemctl start nginx
+Check: http://explorer.yourdomain.com
+
+Secure your server
+We will close all ports, except the ssh, http and https port.
+
+ufw limit 22/tcp comment "Limit SSH "
+ufw allow 22/tcp comment "SSH"
+ufw allow http comment "HTTP"
+ufw allow https comment "HTTPS"
+Create a https certificate with Let’s Encrypt
+Here an example to create a https certificate with Let’s Encrypt to have a secure browser session.
+
+Add the certbot package repo. Press Enter to accept the key.
+
+sudo add-apt-repository ppa:certbot/certbot
+sudo apt install python-certbot-nginx
+Obtaining an SSL Certificate. Replace the URL with yours.
+
+sudo certbot --nginx -d explorer.yourdomain.com -d www.explorer.yourdomain.com
+If that’s successful, certbot will ask how you’d like to configure your HTTPS settings.
+
+Output
+Please choose whether or not to redirect HTTP traffic to HTTPS, removing HTTP access.
+-------------------------------------------------------------------------------
+1: No redirect - Make no further changes to the webserver configuration.
+2: Redirect - Make all requests redirect to secure HTTPS access. Choose this for
+new sites, or if you're confident your site works on HTTPS. You can undo this
+change by editing your web server's configuration.
+-------------------------------------------------------------------------------
+Select the appropriate number [1-2] then [enter] (press 'c' to cancel):
+Choose here the option “2”.
+
+Verifying Certbot Auto-Renewal
+
+sudo certbot renew --dry-run
+Now you have a running explorer with https security. We need to close the http port in the firewall, because we only want to accept http traffic.
+
+sudo ufw status numbered
+sudo ufw delete number from your http rule (IP v4 and IP v6 you have to delete)
+Finally you can configure the design and the correct API links. Switch trough the templates and choose what you like, replace the logo and the favicon.
+
+To set the API links correct, choose a block and fill the settings.conf with the relevant values from your chain.
+
+Create in /public a file “robots.txt” to prevent that the web crawlers index the explorer into public search engines.
+
+User-agent: *
+Disallow: /address
+Disallow: /api
+Disallow: /transaction
+Troubleshooting
+Sync script error: Script already running
+rm tmp/index.pid
+Clean the MongoDB
+You can drop the mongo db with the following commands. It’s required it the db is corrupt.
+
+mongo  
+use explorerdb
+db.addresses.remove({})
+db.addresses.drop()
+db.coinstats.remove({})
+db.coinstats.drop()
+db.markets.remove({})
+db.markets.drop()
+db.peers.remove({})
+db.peers.drop()
+db.richlists.remove({})
+db.richlists.drop()
+db.txes.remove({})
+db.txes.drop()
+exit
