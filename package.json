@@ -44,9 +44,13 @@
     "mongoose": "5.7.7",
     "morgan": "~1.9.1",
     "node-sass": "^8.0.0",
+    "postman-request": "^2.88.1-postman.32",
     "pug": "^2.0.3",
     "qr-image": "~2.0.0",
     "request": "^2.88.0",
+    "sass": "^1.58.0",
+    "sass-loader": "^13.2.0",
+    "serve-favicon": "^2.5.0",
     "static-favicon": "~1.0.0"
   },
   "devDependencies": {
